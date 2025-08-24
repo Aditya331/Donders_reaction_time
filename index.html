@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mental Chronometry Experiment</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .stimulus-box { font-size: 4rem; font-weight: bold; }
+    .instruction-text { max-width: 600px; }
+    .results-table { width: 100%; max-width: 500px; border-collapse: collapse; }
+    .results-table th, .results-table td {
+      border: 1px solid #e2e8f0; padding: 12px; text-align: left;
+    }
+    .results-table th { background-color: #f8fafc; }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-800 flex items-center justify-center min-h-screen">
+
+<div id="app" class="w-full max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-8 text-center">
+
+  <!-- Welcome Screen -->
+  <div id="welcome-screen">
+    <h1 class="text-4xl font-bold mb-4">Reaction Time Experiment</h1>
+    <p class="instruction-text mx-auto text-lg text-gray-600 mb-8">
+      Welcome! This experiment measures how quickly you can react to different types of information. 
+      It is based on the classic work of F.C. Donders. You will complete three short tasks.
+      <br><br>
+      Please ensure you are in a quiet environment and can focus. 
+      Your goal is to respond as <strong>quickly and accurately</strong> as possible.
+    </p>
+    <button id="start-button" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg text-xl hover:bg-blue-700 transition-colors">
+      Start Experiment
+    </button>
+  </div>
+
+  <!-- Instructions Screen -->
+  <div id="instruction-screen" class="hidden">
+    <h2 id="instruction-title" class="text-3xl font-bold mb-4"></h2>
+    <div id="instruction-body" class="instruction-text mx-auto text-lg text-gray-600 mb-8"></div>
+    <p class="text-xl font-medium">Press the 
+      <kbd class="bg-gray-200 text-gray-900 rounded-md px-3 py-1 font-mono shadow">SPACEBAR</kbd> to begin.
+    </p>
+  </div>
+
+  <!-- Experiment Screen -->
+  <div id="experiment-screen" class="hidden">
+    <div class="w-full h-80 flex items-center justify-center bg-gray-100 rounded-lg">
+      <div id="stimulus-box" class="stimulus-box text-gray-800">+</div>
+    </div>
+    <div id="feedback" class="mt-4 text-lg h-8"></div>
+  </div>
+
+  <!-- Results Screen -->
+  <div id="results-screen" class="hidden">
+    <h1 class="text-4xl font-bold mb-6">Experiment Complete!</h1>
+    <p class="instruction-text mx-auto text-lg text-gray-600 mb-8">
+      Thank you for your participation. Below is a summary of your average reaction times.
+    </p>
+    <div class="flex justify-center">
+      <table id="results-table" class="results-table">
+        <thead>
+          <tr><th>Measurement</th><th>Time (ms)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="font-semibold">Task A: Simple Reaction</td><td id="result-task-a"></td></tr>
+          <tr><td class="font-semibold">Task B: Categorization</td><td id="result-task-b"></td></tr>
+          <tr><td class="font-semibold">Task C: Arithmetic</td><td id="result-task-c"></td></tr>
+          <tr class="bg-blue-50"><td class="font-bold">Categorization Time (B - A)</td><td id="result-cat-time" class="font-bold"></td></tr>
+          <tr class="bg-green-50"><td class="font-bold">Mental Arithmetic Time (C - B)</td><td id="result-math-time" class="font-bold"></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <button id="download-csv" class="mt-8 bg-gray-700 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-800 transition-colors">
+      Download Raw Data (CSV)
+    </button>
+  </div>
+</div>
+
+<script type="module">
+  // --- LOCAL ONLY VERSION (NO FIREBASE) ---
+  const userId = `local_${crypto.randomUUID()}`;
+
+  // --- DOM ELEMENTS ---
+  const screens = {
+    welcome: document.getElementById('welcome-screen'),
+    instruction: document.getElementById('instruction-screen'),
+    experiment: document.getElementById('experiment-screen'),
+    results: document.getElementById('results-screen'),
+  };
+  const stimulusBox = document.getElementById('stimulus-box');
+  const feedback = document.getElementById('feedback');
+
+  // --- EXPERIMENT CONFIGURATION ---
+  const TRIALS_PER_TASK = 10;
+  const TASKS = ['A', 'B', 'C'];
+  const INSTRUCTIONS = {
+    A: {
+      title: "Task 1: Simple Reaction",
+      body: "A <strong class='text-green-600'>green circle</strong> will appear. As soon as you see it, press SPACEBAR as quickly as you can."
+    },
+    B: {
+      title: "Task 2: Categorization",
+      body: "A number will appear. If the number is <strong class='text-blue-600'>EVEN</strong>, press <kbd class='bg-gray-200 px-2'>J</kbd>. If the number is <strong class='text-red-600'>ODD</strong>, press <kbd class='bg-gray-200 px-2'>K</kbd>."
+    },
+    C: {
+      title: "Task 3: Mental Arithmetic",
+      body: "An equation will appear. If it is <strong class='text-blue-600'>TRUE</strong>, press <kbd class='bg-gray-200 px-2'>J</kbd>. If <strong class='text-red-600'>FALSE</strong>, press <kbd class='bg-gray-200 px-2'>K</kbd>."
+    }
+  };
+  const ARITHMETIC_PROBLEMS = [
+    { question: '2 + 4 = 6', answer: 'true' }, { question: '3 + 5 = 8', answer: 'true' },
+    { question: '1 + 3 = 4', answer: 'true' }, { question: '6 + 2 = 8', answer: 'true' },
+    { question: '4 + 5 = 9', answer: 'true' }, { question: '2 + 3 = 6', answer: 'false' },
+    { question: '5 + 1 = 7', answer: 'false' }, { question: '3 + 3 = 5', answer: 'false' },
+    { question: '7 + 2 = 8', answer: 'false' }, { question: '4 + 2 = 5', answer: 'false' },
+  ];
+
+  // --- STATE MANAGEMENT ---
+  let state = {
+    currentTaskIndex: 0,
+    currentTrial: 0,
+    resultsData: [],
+    trialStartTime: 0,
+    isWaitingForInput: false,
+    currentStimulus: null,
+  };
+
+  // --- CORE LOGIC ---
+  function switchScreen(screenName) {
+    Object.values(screens).forEach(s => s.classList.add('hidden'));
+    screens[screenName].classList.remove('hidden');
+  }
+
+  function startExperiment() {
+    state.currentTaskIndex = 0;
+    state.currentTrial = 0;
+    state.resultsData = [];
+    showInstructions();
+  }
+
+  function showInstructions() {
+    const task = TASKS[state.currentTaskIndex];
+    if (!task) {
+      endExperiment();
+      return;
+    }
+    document.getElementById('instruction-title').innerText = INSTRUCTIONS[task].title;
+    document.getElementById('instruction-body').innerHTML = INSTRUCTIONS[task].body;
+    switchScreen('instruction');
+  }
+
+  function startTask() {
+    state.currentTrial = 0;
+    switchScreen('experiment');
+    runNextTrial();
+  }
+
+  function runNextTrial() {
+    if (state.currentTrial >= TRIALS_PER_TASK) {
+      state.currentTaskIndex++;
+      showInstructions();
+      return;
+    }
+    state.isWaitingForInput = false;
+    feedback.textContent = '';
+    stimulusBox.innerHTML = '+'; 
+    stimulusBox.style.color = '#374151'; 
+
+    const delay = Math.random() * 2000 + 1000; // 1-3 sec
+    setTimeout(showStimulus, delay);
+  }
+
+  function showStimulus() {
+    const task = TASKS[state.currentTaskIndex];
+    state.currentStimulus = generateStimulus(task);
+
+    stimulusBox.innerHTML = state.currentStimulus.display;
+    if (task === 'A') stimulusBox.style.color = '#16a34a'; 
+
+    state.trialStartTime = performance.now();
+    state.isWaitingForInput = true;
+  }
+
+  function generateStimulus(task) {
+    switch (task) {
+      case 'A': return { display: '●', answer: 'space' };
+      case 'B': {
+        const num = Math.floor(Math.random() * 9) + 1;
+        return { display: num, answer: num % 2 === 0 ? 'j' : 'k' };
+      }
+      case 'C': {
+        const problem = ARITHMETIC_PROBLEMS[Math.floor(Math.random() * ARITHMETIC_PROBLEMS.length)];
+        return { display: problem.question, answer: problem.answer === 'true' ? 'j' : 'k' };
+      }
+    }
+  }
+
+  function handleKeyPress(e) {
+    const key = e.key.toLowerCase();
+
+    if (screens.instruction.offsetParent !== null && key === ' ') {
+      startTask(); return;
+    }
+    if (!state.isWaitingForInput) return;
+
+    const task = TASKS[state.currentTaskIndex];
+    const reactionTime = performance.now() - state.trialStartTime;
+    let isCorrect = false;
+
+    if (task === 'A') {
+      if (key === ' ') isCorrect = true;
+    } else if (task === 'B' || task === 'C') {
+      if (key === 'j' || key === 'k') {
+        isCorrect = (key === state.currentStimulus.answer);
+      } else return;
+    }
+
+    state.isWaitingForInput = false;
+    feedback.textContent = isCorrect ? 'Correct' : 'Incorrect';
+    feedback.style.color = isCorrect ? 'green' : 'red';
+
+    state.resultsData.push({
+      userId, task,
+      trial: state.currentTrial + 1,
+      stimulus: state.currentStimulus.display,
+      response: key,
+      isCorrect,
+      rt: reactionTime,
+    });
+
+    state.currentTrial++;
+    setTimeout(runNextTrial, 1000);
+  }
+
+  function endExperiment() { showResults(); }
+
+  function calculateSummary() {
+    const summary = { A: [], B: [], C: [] };
+    state.resultsData.forEach(trial => {
+      if (trial.isCorrect) summary[trial.task].push(trial.rt);
+    });
+    const mean = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+
+    const meanA = mean(summary.A), meanB = mean(summary.B), meanC = mean(summary.C);
+    return {
+      meanA, meanB, meanC,
+      categorizationTime: meanB - meanA,
+      arithmeticTime: meanC - meanB,
+    };
+  }
+
+  function showResults() {
+    const s = calculateSummary();
+    document.getElementById('result-task-a').textContent = s.meanA.toFixed(2);
+    document.getElementById('result-task-b').textContent = s.meanB.toFixed(2);
+    document.getElementById('result-task-c').textContent = s.meanC.toFixed(2);
+    document.getElementById('result-cat-time').textContent = s.categorizationTime.toFixed(2);
+    document.getElementById('result-math-time').textContent = s.arithmeticTime.toFixed(2);
+    switchScreen('results');
+  }
+
+  function downloadCSV() {
+    if (!state.resultsData.length) { alert("No data to download."); return; }
+    const headers = Object.keys(state.resultsData[0]);
+    const rows = state.resultsData.map(r => headers.map(h => `"${String(r[h]).replace(/"/g,'""')}"`).join(','));
+    const csv = [headers.join(','), ...rows].join('\r\n');
+    const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download=`donders_experiment_data_${userId}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // --- EVENT LISTENERS ---
+  document.getElementById('start-button').addEventListener('click', startExperiment);
+  document.getElementById('download-csv').addEventListener('click', downloadCSV);
+  document.addEventListener('keydown', handleKeyPress);
+</script>
+</body>
+</html>
